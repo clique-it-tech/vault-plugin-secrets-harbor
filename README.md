@@ -91,6 +91,9 @@ In API terms that is `resource: robot` with `list` under `kind: system`, plus
 `resource: robot` with `create` and `delete` and `resource: repository` with
 `pull` and `push` under `kind: project`.
 
+That list is complete for issuing and revoking. It is not enough to rotate the
+engine's own credential, and no grant is, which the next section explains.
+
 ```sh
 vault write harbor/config \
   url=https://harbor.example.com \
@@ -109,6 +112,30 @@ password.
 | `username` | yes | Account allowed to manage robot accounts |
 | `password` | yes | Password for that account |
 | `insecure_tls` | no | Skip verification of the Harbor certificate |
+
+### Rotating the root credential
+
+```sh
+vault write -f harbor/config/rotate-root
+```
+
+Generates a new secret for the configured account, sets it in Harbor and stores
+it, after which nobody knows it. Storage is written before Harbor, so a refusal
+from Harbor rolls the stored secret back rather than locking the engine out.
+
+**This does not work when the engine authenticates as a robot, which is the
+setup the rest of this document recommends.** Harbor refreshes a robot's secret
+through `PATCH /api/v2.0/robots/{id}`, which is authorised by the `update`
+action on the `robot` resource, and that action does not exist for robot
+accounts: the permission wizard does not offer it and the API refuses the call
+with `403 FORBIDDEN`. Granting every robot permission available at system level
+does not change the answer, which was verified against Harbor v2.15.2 rather
+than assumed.
+
+So the path is only useful with a configured account that Harbor lets update
+robots, and a robot is not one. Rotating a robot-authenticated engine means
+replacing the account rather than refreshing it, which this plugin does not do
+yet; the account's secret stays valid until someone recreates it by hand.
 
 ### Define a role
 
