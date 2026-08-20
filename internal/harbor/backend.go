@@ -40,6 +40,7 @@ func backend() *harborBackend {
 			pathRoles(b),
 			[]*framework.Path{
 				pathConfig(b),
+				pathRotateRoot(b),
 				pathCredentials(b),
 			},
 		),

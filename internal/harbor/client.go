@@ -120,3 +120,27 @@ func (c *client) ping(ctx context.Context) error {
 	return c.do(ctx, http.MethodGet, "/api/v2.0/robots?page_size=1", nil, nil)
 }
 
+
+func (c *client) findRobotByName(ctx context.Context, name string) (int, error) {
+	const pageSize = 100
+	for page := 1; ; page++ {
+		var robots []robotResponse
+		path := fmt.Sprintf("/api/v2.0/robots?page=%d&page_size=%d", page, pageSize)
+		if err := c.do(ctx, http.MethodGet, path, nil, &robots); err != nil {
+			return 0, err
+		}
+		for _, robot := range robots {
+			if robot.Name == name || "robot$"+robot.Name == name {
+				return robot.ID, nil
+			}
+		}
+		if len(robots) < pageSize {
+			return 0, fmt.Errorf("%w: %s", errRobotNotFound, name)
+		}
+	}
+}
+
+func (c *client) refreshRobotSecret(ctx context.Context, id int, secret string) error {
+	body := map[string]any{"secret": secret}
+	return c.do(ctx, http.MethodPatch, fmt.Sprintf("/api/v2.0/robots/%d", id), body, nil)
+}
