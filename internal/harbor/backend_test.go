@@ -13,15 +13,17 @@ import (
 )
 
 type fakeHarbor struct {
-	server   *httptest.Server
-	created  []robotRequest
-	deleted  []string
-	existing []robotResponse
+	server        *httptest.Server
+	created       []robotRequest
+	deleted       []string
+	existing      []robotResponse
+	refreshed     map[string]string
+	refuseRefresh bool
 }
 
 func newFakeHarbor(t *testing.T) *fakeHarbor {
 	t.Helper()
-	f := &fakeHarbor{}
+	f := &fakeHarbor{refreshed: map[string]string{}}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v2.0/robots", func(w http.ResponseWriter, r *http.Request) {
@@ -39,12 +41,28 @@ func newFakeHarbor(t *testing.T) *fakeHarbor {
 		json.NewEncoder(w).Encode(robotResponse{ID: 42, Name: "robot$" + req.Name, Secret: "s3cret"})
 	})
 	mux.HandleFunc("/api/v2.0/robots/", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodDelete {
+		id := strings.TrimPrefix(r.URL.Path, "/api/v2.0/robots/")
+		switch r.Method {
+		case http.MethodDelete:
+			f.deleted = append(f.deleted, id)
+			w.WriteHeader(http.StatusOK)
+		case http.MethodPatch:
+			if f.refuseRefresh {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+			var body struct {
+				Secret string `json:"secret"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			f.refreshed[id] = body.Secret
+			w.WriteHeader(http.StatusOK)
+		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
 		}
-		f.deleted = append(f.deleted, strings.TrimPrefix(r.URL.Path, "/api/v2.0/robots/"))
-		w.WriteHeader(http.StatusOK)
 	})
 
 	f.server = httptest.NewServer(mux)
@@ -233,5 +251,118 @@ func TestAnInterruptedCreateIsBoundedByTheAccountExpiry(t *testing.T) {
 	}
 	if robotExpiryDays < 1 {
 		t.Fatal("an account with no expiry of its own would be left behind forever")
+	}
+}
+
+func rotate(t *testing.T, b *harborBackend, s logical.Storage) (*logical.Response, error) {
+	t.Helper()
+	return b.HandleRequest(context.Background(), &logical.Request{
+		Operation: logical.UpdateOperation,
+		Path:      "config/rotate-root",
+		Storage:   s,
+	})
+}
+
+func TestRotatingRootReplacesTheSecretInHarborAndInStorage(t *testing.T) {
+	f := newFakeHarbor(t)
+	f.existing = []robotResponse{{ID: 7, Name: "admin"}}
+	b, s := configured(t, f.server.URL)
+
+	if resp, err := rotate(t, b, s); err != nil || (resp != nil && resp.IsError()) {
+		t.Fatalf("rotating failed: %v %v", err, resp)
+	}
+
+	stored, err := getConfig(context.Background(), s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Password == "password" {
+		t.Fatal("the old secret is still in storage")
+	}
+	if len(stored.Password) != rootSecretLength {
+		t.Fatalf("stored secret is %d characters, want %d", len(stored.Password), rootSecretLength)
+	}
+	if f.refreshed["7"] != stored.Password {
+		t.Fatalf("harbor got %q but storage holds %q", f.refreshed["7"], stored.Password)
+	}
+}
+
+func TestARefusedRotationLeavesTheOldSecretUsable(t *testing.T) {
+	f := newFakeHarbor(t)
+	f.existing = []robotResponse{{ID: 7, Name: "admin"}}
+	b, s := configured(t, f.server.URL)
+	f.refuseRefresh = true
+
+	if _, err := rotate(t, b, s); err == nil {
+		t.Fatal("a refused rotation should report an error")
+	}
+
+	stored, err := getConfig(context.Background(), s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Password != "password" {
+		t.Fatalf("the old secret was not put back, storage holds %q", stored.Password)
+	}
+}
+
+func TestRotatingFindsARobotByItsPrefixedName(t *testing.T) {
+	f := newFakeHarbor(t)
+	f.existing = []robotResponse{{ID: 3, Name: "someone-else"}, {ID: 9, Name: "stronghold"}}
+
+	config := &logical.BackendConfig{StorageView: &logical.InmemStorage{}}
+	b := backend()
+	if err := b.Setup(context.Background(), config); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.HandleRequest(context.Background(), &logical.Request{
+		Operation: logical.CreateOperation,
+		Path:      "config",
+		Storage:   config.StorageView,
+		Data: map[string]any{
+			"url":      f.server.URL,
+			"username": "robot$stronghold",
+			"password": "password",
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if resp, err := rotate(t, b, config.StorageView); err != nil || (resp != nil && resp.IsError()) {
+		t.Fatalf("rotating failed: %v %v", err, resp)
+	}
+	if _, ok := f.refreshed["9"]; !ok {
+		t.Fatalf("harbor refreshed %v, want robot 9", f.refreshed)
+	}
+}
+
+func TestRotatingWithoutConfigIsRefused(t *testing.T) {
+	config := &logical.BackendConfig{StorageView: &logical.InmemStorage{}}
+	b := backend()
+	if err := b.Setup(context.Background(), config); err != nil {
+		t.Fatal(err)
+	}
+
+	resp, err := rotate(t, b, config.StorageView)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp == nil || !resp.IsError() {
+		t.Fatalf("expected a refusal, got %v", resp)
+	}
+}
+
+func TestGeneratedSecretsCarryEveryClassHarborDemands(t *testing.T) {
+	for range 200 {
+		secret, err := generateSecret()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(secret) != rootSecretLength {
+			t.Fatalf("got %d characters, want %d", len(secret), rootSecretLength)
+		}
+		if !strings.ContainsAny(secret, lowers) || !strings.ContainsAny(secret, uppers) || !strings.ContainsAny(secret, digits) {
+			t.Fatalf("secret %q is missing a character class", secret)
+		}
 	}
 }

@@ -76,6 +76,14 @@ func getConfig(ctx context.Context, s logical.Storage) (*harborConfig, error) {
 	return config, nil
 }
 
+func storeConfig(ctx context.Context, s logical.Storage, config *harborConfig) error {
+	entry, err := logical.StorageEntryJSON(configStoragePath, config)
+	if err != nil {
+		return err
+	}
+	return s.Put(ctx, entry)
+}
+
 func (b *harborBackend) pathConfigExistence(ctx context.Context, req *logical.Request, _ *framework.FieldData) (bool, error) {
 	config, err := getConfig(ctx, req.Storage)
 	if err != nil {
@@ -128,11 +136,7 @@ func (b *harborBackend) pathConfigWrite(ctx context.Context, req *logical.Reques
 		return logical.ErrorResponse("url, username and password are all required"), nil
 	}
 
-	entry, err := logical.StorageEntryJSON(configStoragePath, config)
-	if err != nil {
-		return nil, err
-	}
-	if err := req.Storage.Put(ctx, entry); err != nil {
+	if err := storeConfig(ctx, req.Storage, config); err != nil {
 		return nil, err
 	}
 
