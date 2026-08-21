@@ -46,19 +46,34 @@ func pathRoles(b *harborBackend) []*framework.Path {
 					Type:        framework.TypeString,
 					Description: "Harbor project the issued accounts may act on.",
 					Required:    true,
+					DisplayAttrs: &framework.DisplayAttributes{
+						Name:  "Project",
+						Value: "clique",
+					},
 				},
 				"push": {
 					Type:        framework.TypeBool,
 					Description: "Grant push in addition to pull.",
 					Default:     false,
+					DisplayAttrs: &framework.DisplayAttributes{
+						Name: "Allow push",
+					},
 				},
 				"ttl": {
 					Type:        framework.TypeDurationSecond,
 					Description: "Lifetime of an issued account.",
+					DisplayAttrs: &framework.DisplayAttributes{
+						Name:     "Lease",
+						EditType: "ttl",
+					},
 				},
 				"max_ttl": {
 					Type:        framework.TypeDurationSecond,
 					Description: "Longest an issued account may be renewed for.",
+					DisplayAttrs: &framework.DisplayAttributes{
+						Name:     "Longest lease",
+						EditType: "ttl",
+					},
 				},
 			},
 			Operations: map[logical.Operation]framework.OperationHandler{
