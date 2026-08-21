@@ -34,10 +34,11 @@ func backend() *harborBackend {
 	b.Backend = &framework.Backend{
 		Help: strings.TrimSpace(backendHelp),
 		PathsSpecial: &logical.Paths{
-			SealWrapStorage: []string{configStoragePath, rolesStoragePrefix + "*"},
+			SealWrapStorage: []string{configStoragePath, rolesStoragePrefix + "*", staticRoleStoragePrefix + "*"},
 		},
 		Paths: framework.PathAppend(
 			pathRoles(b),
+			pathStaticRoles(b),
 			[]*framework.Path{
 				pathConfig(b),
 				pathRotateRoot(b),
@@ -47,8 +48,9 @@ func backend() *harborBackend {
 		Secrets: []*framework.Secret{
 			b.robot(),
 		},
-		BackendType: logical.TypeLogical,
-		Invalidate:  b.invalidate,
+		BackendType:  logical.TypeLogical,
+		Invalidate:   b.invalidate,
+		PeriodicFunc: b.rotateDueStaticRoles,
 	}
 
 	return b

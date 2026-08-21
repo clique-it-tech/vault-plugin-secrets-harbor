@@ -187,6 +187,53 @@ lease expires or is revoked, the account is deleted from Harbor.
 vault lease revoke harbor/creds/ci/9kPmT...
 ```
 
+### An account that outlives the lease
+
+A role issues an account per lease, which suits a build job: it asks once, does its work, and the
+lease ends. An image pull secret cannot work that way. Every pod that starts reads it, nothing
+holds a lease, and the credential has to keep working — which is why such accounts tend to be
+created once by hand and then never changed.
+
+A static role holds one account instead:
+
+```sh
+vault write harbor/static-roles/pull \
+  project=my-project \
+  rotation_period=720h
+
+vault read harbor/static-creds/pull
+```
+
+```
+Key             Value
+---             -----
+name            robot$my-project+vault-static-pull-1755612345678901234
+secret          ...
+last_rotation   2026-08-21T09:12:03Z
+ttl             2591940
+```
+
+Reading returns the same account every time and creates nothing. With a rotation period the engine
+replaces it on schedule and `ttl` counts down to the next change; without one it changes only when
+asked:
+
+```sh
+vault write -f harbor/rotate-role/pull
+```
+
+**The account name changes on every rotation, and consumers must read it alongside the secret.**
+Harbor offers no way to change a robot account's secret — the `update` action does not exist for
+robots — so rotation creates a second account and deletes the first, and Harbor will not hold two
+accounts under one name. A consumer that stores only the secret will break; one that stores a
+docker config, which carries username and password together, will not.
+
+The new account is created and recorded before the old one is deleted, so a failure halfway leaves
+the role holding credentials that work rather than none.
+
+Harbor's own expiry is set a week beyond the rotation period, so a late rotation cannot arrive
+after the account has already lapsed. A role with no rotation period gets no expiry at all: an
+account nothing will replace should not stop working on a day nobody chose.
+
 ### Restricting a caller to one project
 
 ```hcl

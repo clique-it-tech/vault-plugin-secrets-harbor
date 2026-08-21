@@ -3,6 +3,7 @@ package harbor
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -19,11 +20,12 @@ type fakeHarbor struct {
 	existing      []robotResponse
 	refreshed     map[string]string
 	refuseRefresh bool
+	nextID        int
 }
 
 func newFakeHarbor(t *testing.T) *fakeHarbor {
 	t.Helper()
-	f := &fakeHarbor{refreshed: map[string]string{}}
+	f := &fakeHarbor{refreshed: map[string]string{}, nextID: 42}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v2.0/robots", func(w http.ResponseWriter, r *http.Request) {
@@ -37,8 +39,14 @@ func newFakeHarbor(t *testing.T) *fakeHarbor {
 			return
 		}
 		f.created = append(f.created, req)
+		id := f.nextID
+		f.nextID++
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(robotResponse{ID: 42, Name: "robot$" + req.Name, Secret: "s3cret"})
+		json.NewEncoder(w).Encode(robotResponse{
+			ID:     id,
+			Name:   "robot$" + req.Name,
+			Secret: fmt.Sprintf("s3cret-%d", id),
+		})
 	})
 	mux.HandleFunc("/api/v2.0/robots/", func(w http.ResponseWriter, r *http.Request) {
 		id := strings.TrimPrefix(r.URL.Path, "/api/v2.0/robots/")
@@ -121,7 +129,7 @@ func TestIssuedRobotIsScopedToTheRoleAndDeletedWhenTheLeaseEnds(t *testing.T) {
 	if err != nil {
 		t.Fatalf("issuing failed: %v", err)
 	}
-	if resp.Data["secret"] != "s3cret" {
+	if resp.Data["secret"] != "s3cret-42" {
 		t.Fatalf("expected the robot secret, got %v", resp.Data["secret"])
 	}
 	if got := fake.created[0].Permissions[0].Namespace; got != "library" {
@@ -363,5 +371,160 @@ func TestGeneratedSecretsCarryEveryClassHarborDemands(t *testing.T) {
 		if !strings.ContainsAny(secret, lowers) || !strings.ContainsAny(secret, uppers) || !strings.ContainsAny(secret, digits) {
 			t.Fatalf("secret %q is missing a character class", secret)
 		}
+	}
+}
+
+func write(t *testing.T, b *harborBackend, s logical.Storage, path string, data map[string]any) *logical.Response {
+	t.Helper()
+	for _, op := range []logical.Operation{logical.UpdateOperation, logical.CreateOperation} {
+		resp, err := b.HandleRequest(context.Background(), &logical.Request{
+			Operation: op, Path: path, Storage: s, Data: data,
+		})
+		if err != nil && strings.Contains(err.Error(), "unsupported operation") {
+			continue
+		}
+		if err != nil || (resp != nil && resp.IsError()) {
+			t.Fatalf("writing %s failed: %v %v", path, err, resp)
+		}
+		return resp
+	}
+	t.Fatalf("no write operation accepted for %s", path)
+	return nil
+}
+
+func read(t *testing.T, b *harborBackend, s logical.Storage, path string) *logical.Response {
+	t.Helper()
+	resp, err := b.HandleRequest(context.Background(), &logical.Request{
+		Operation: logical.ReadOperation, Path: path, Storage: s,
+	})
+	if err != nil || resp == nil || resp.IsError() {
+		t.Fatalf("reading %s failed: %v %v", path, err, resp)
+	}
+	return resp
+}
+
+func harborStaticFixture(t *testing.T, b *harborBackend, s logical.Storage, data map[string]any) {
+	t.Helper()
+	base := map[string]any{"project": "clique"}
+	for k, v := range data {
+		base[k] = v
+	}
+	write(t, b, s, "static-roles/pull", base)
+}
+
+func agedHarborStaticRole(t *testing.T, s logical.Storage, name string, since time.Duration) {
+	t.Helper()
+	role, err := getStaticRole(context.Background(), s, name)
+	if err != nil || role == nil {
+		t.Fatalf("static role %q is missing: %v", name, err)
+	}
+	role.LastRotation = time.Now().Add(-since)
+	if err := storeStaticRole(context.Background(), s, name, role); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAStaticRoleHandsOutOneAccountToEveryReader(t *testing.T) {
+	f := newFakeHarbor(t)
+	b, s := configured(t, f.server.URL)
+	harborStaticFixture(t, b, s, nil)
+
+	first := read(t, b, s, "static-creds/pull")
+	second := read(t, b, s, "static-creds/pull")
+
+	if first.Data["name"] != second.Data["name"] || first.Data["secret"] != second.Data["secret"] {
+		t.Fatalf("every reader must get the same account, got %v then %v", first.Data, second.Data)
+	}
+	if len(f.created) != 1 {
+		t.Fatalf("reading must not create accounts, harbor made %d", len(f.created))
+	}
+}
+
+func TestRotatingAStaticRoleReplacesTheAccount(t *testing.T) {
+	f := newFakeHarbor(t)
+	b, s := configured(t, f.server.URL)
+	harborStaticFixture(t, b, s, nil)
+
+	before := read(t, b, s, "static-creds/pull")
+	write(t, b, s, "rotate-role/pull", map[string]any{})
+	after := read(t, b, s, "static-creds/pull")
+
+	if before.Data["name"] == after.Data["name"] {
+		t.Fatal("rotation must produce a different account")
+	}
+	if before.Data["secret"] == after.Data["secret"] {
+		t.Fatal("rotation must produce a different secret")
+	}
+	if len(f.deleted) != 1 || f.deleted[0] != "42" {
+		t.Fatalf("the previous account must be deleted, deleted=%v", f.deleted)
+	}
+}
+
+func TestAStaticRoleWithoutAPeriodNeverRotatesItself(t *testing.T) {
+	f := newFakeHarbor(t)
+	b, s := configured(t, f.server.URL)
+	harborStaticFixture(t, b, s, nil)
+
+	before := read(t, b, s, "static-creds/pull").Data["name"]
+	agedHarborStaticRole(t, s, "pull", 365*24*time.Hour)
+
+	if err := b.rotateDueStaticRoles(context.Background(), &logical.Request{Storage: s}); err != nil {
+		t.Fatal(err)
+	}
+	if read(t, b, s, "static-creds/pull").Data["name"] != before {
+		t.Fatal("a role without a rotation period must never rotate on its own, however old it is")
+	}
+}
+
+func TestTheScheduleRotatesAHarborRoleThatIsDue(t *testing.T) {
+	f := newFakeHarbor(t)
+	b, s := configured(t, f.server.URL)
+	harborStaticFixture(t, b, s, map[string]any{"rotation_period": 3600})
+
+	before := read(t, b, s, "static-creds/pull").Data["name"]
+	agedHarborStaticRole(t, s, "pull", 2*time.Hour)
+
+	if err := b.rotateDueStaticRoles(context.Background(), &logical.Request{Storage: s}); err != nil {
+		t.Fatal(err)
+	}
+	if read(t, b, s, "static-creds/pull").Data["name"] == before {
+		t.Fatal("a role past its rotation period must be rotated")
+	}
+	if len(f.deleted) != 1 {
+		t.Fatalf("the previous account must be deleted, deleted=%v", f.deleted)
+	}
+}
+
+func TestHarborExpiryStaysClearOfTheRotationSchedule(t *testing.T) {
+	f := newFakeHarbor(t)
+	b, s := configured(t, f.server.URL)
+
+	harborStaticFixture(t, b, s, map[string]any{"rotation_period": 30 * 24 * 3600})
+	if got := f.created[0].Duration; got != 37 {
+		t.Fatalf("a thirty day rotation needs a longer expiry, got %d days", got)
+	}
+
+	write(t, b, s, "static-roles/manual", map[string]any{"project": "clique"})
+	if got := f.created[1].Duration; got != robotNeverExpires {
+		t.Fatalf("a role nothing rotates must not expire on its own, got %d", got)
+	}
+}
+
+func TestAStaticRoleCannotTakeARoleName(t *testing.T) {
+	f := newFakeHarbor(t)
+	b, s := configured(t, f.server.URL)
+	writeRole(t, b, s, "ci", map[string]any{"project": "clique"})
+
+	resp, err := b.HandleRequest(context.Background(), &logical.Request{
+		Operation: logical.CreateOperation,
+		Path:      "static-roles/ci",
+		Storage:   s,
+		Data:      map[string]any{"project": "clique"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp == nil || !resp.IsError() {
+		t.Fatalf("sharing a name with a role must be refused, got %v", resp)
 	}
 }
