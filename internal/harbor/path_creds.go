@@ -16,7 +16,6 @@ const (
 	maxRobotLifetime = 24 * time.Hour
 )
 
-
 func (b *harborBackend) robot() *framework.Secret {
 	return &framework.Secret{
 		Type: secretTypeRobot,

@@ -28,24 +28,38 @@ func pathConfig(b *harborBackend) *framework.Path {
 				Type:        framework.TypeString,
 				Description: "Base URL of the Harbor instance, without a trailing slash.",
 				Required:    true,
+				DisplayAttrs: &framework.DisplayAttributes{
+					Name:  "Harbor URL",
+					Value: "https://harbor.example.com",
+				},
 			},
 			"username": {
 				Type:        framework.TypeString,
 				Description: "Account allowed to create and delete robot accounts.",
 				Required:    true,
+				DisplayAttrs: &framework.DisplayAttributes{
+					Name:  "Account",
+					Value: "robot$stronghold",
+				},
 			},
 			"password": {
 				Type:        framework.TypeString,
 				Description: "Password for that account.",
 				Required:    true,
 				DisplayAttrs: &framework.DisplayAttributes{
+					Name:      "Secret",
 					Sensitive: true,
+					EditType:  "password",
 				},
 			},
 			"insecure_tls": {
 				Type:        framework.TypeBool,
 				Description: "Skip verification of the Harbor certificate.",
 				Default:     false,
+				DisplayAttrs: &framework.DisplayAttributes{
+					Name:  "Skip certificate verification",
+					Group: "Advanced",
+				},
 			},
 		},
 		Operations: map[logical.Operation]framework.OperationHandler{

@@ -40,9 +40,9 @@ func newClient(c *harborConfig) *client {
 }
 
 type robotPermission struct {
-	Kind      string         `json:"kind"`
-	Namespace string         `json:"namespace"`
-	Access    []robotAccess  `json:"access"`
+	Kind      string        `json:"kind"`
+	Namespace string        `json:"namespace"`
+	Access    []robotAccess `json:"access"`
 }
 
 type robotAccess struct {
@@ -119,7 +119,6 @@ func (c *client) deleteRobot(ctx context.Context, id int) error {
 func (c *client) ping(ctx context.Context) error {
 	return c.do(ctx, http.MethodGet, "/api/v2.0/robots?page_size=1", nil, nil)
 }
-
 
 func (c *client) findRobotByName(ctx context.Context, name string) (int, error) {
 	const pageSize = 100

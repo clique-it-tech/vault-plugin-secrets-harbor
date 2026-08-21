@@ -47,8 +47,8 @@ func backend() *harborBackend {
 		Secrets: []*framework.Secret{
 			b.robot(),
 		},
-		BackendType:    logical.TypeLogical,
-		Invalidate:     b.invalidate,
+		BackendType: logical.TypeLogical,
+		Invalidate:  b.invalidate,
 	}
 
 	return b

@@ -232,7 +232,6 @@ func TestIssuingWithoutConfigIsRefused(t *testing.T) {
 	}
 }
 
-
 func TestAnInterruptedCreateIsBoundedByTheAccountExpiry(t *testing.T) {
 	fake := newFakeHarbor(t)
 	b, storage := configured(t, fake.server.URL)
