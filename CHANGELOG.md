@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/clique-it-tech/vault-plugin-secrets-harbor/compare/v1.1.0...v1.2.0) (2026-08-21)
+
+
+### Features
+
+* label and group the fields the ui renders ([#6](https://github.com/clique-it-tech/vault-plugin-secrets-harbor/issues/6)) ([645a046](https://github.com/clique-it-tech/vault-plugin-secrets-harbor/commit/645a04687179ed35542a913f7c9d0cae89a9b50f))
+
 ## [1.1.0](https://github.com/clique-it-tech/vault-plugin-secrets-harbor/compare/v1.0.0...v1.1.0) (2026-08-20)
 
 
