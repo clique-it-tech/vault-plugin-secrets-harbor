@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/clique-it-tech/vault-plugin-secrets-harbor/compare/v1.2.0...v1.3.0) (2026-08-21)
+
+
+### Features
+
+* hold one robot account for readers without a lease ([#8](https://github.com/clique-it-tech/vault-plugin-secrets-harbor/issues/8)) ([bcf300b](https://github.com/clique-it-tech/vault-plugin-secrets-harbor/commit/bcf300b64299521fa642c0fcbedae2af5bb8f7e1))
+
 ## [1.2.0](https://github.com/clique-it-tech/vault-plugin-secrets-harbor/compare/v1.1.0...v1.2.0) (2026-08-21)
 
 
