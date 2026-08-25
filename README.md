@@ -76,7 +76,7 @@ the projects your roles will name, and grant:
 | Resource | Create | Delete | Pull | Push |
 | --- | --- | --- | --- | --- |
 | Robot Account | yes | yes | | |
-| Repository | | | yes | yes |
+| Repository | | yes | yes | yes |
 
 Robot Account here is what allows an account to be issued at all; the system
 permission above does not cover it. Repository is what the issued accounts
@@ -84,12 +84,22 @@ receive, and Harbor does not let a robot grant permissions it does not hold
 itself, so an engine account without Push will happily issue accounts that
 cannot push and the failure only shows up at `docker push`.
 
+**Delete on Repository is only needed if some role sets `delete=true`, and it
+must be granted to the engine account first.** Harbor refuses to create a robot
+whose scope exceeds the creator's with
+`DENIED: permission scope is invalid. It must be equal to or more restrictive
+than the creator robot's permissions`, and that refusal breaks issuing for the
+role entirely rather than issuing an account with fewer actions. Grant the
+engine account Delete before you turn `delete` on in a role, not after.
+
 Give the account no expiry of its own. It is the engine's root credential, and
 its lifetime is a rotation question rather than an expiry one.
 
 In API terms that is `resource: robot` with `list` under `kind: system`, plus
 `resource: robot` with `create` and `delete` and `resource: repository` with
-`pull` and `push` under `kind: project`.
+`pull`, `push` and `delete` under `kind: project`. Harbor replaces the whole
+permission list on edit rather than merging, so resend the actions the account
+already has alongside the new one.
 
 That list is complete for issuing and revoking. It is not enough to rotate the
 engine's own credential, and no grant is, which the next section explains.
