@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/clique-it-tech/vault-plugin-secrets-harbor/compare/v1.3.0...v1.4.0) (2026-08-25)
+
+
+### Features
+
+* let a role grant delete for image cleanup ([0ca2038](https://github.com/clique-it-tech/vault-plugin-secrets-harbor/commit/0ca2038ba3e98108122f3b7a6f284a3cdc412554))
+
 ## [1.3.0](https://github.com/clique-it-tech/vault-plugin-secrets-harbor/compare/v1.2.0...v1.3.0) (2026-08-21)
 
 
