@@ -153,10 +153,16 @@ vault write harbor/roles/ci \
   max_ttl=8h
 ```
 
+A role that runs image cleanup needs `delete=true` as well. Harbor treats
+deleting a manifest as its own action, so a robot with pull and push still gets
+`UNAUTHORIZED ... action: delete` from the registry API, and the failure only
+appears when the cleanup job runs rather than when the credential is issued.
+
 | Field | Required | Description |
 | --- | --- | --- |
 | `project` | yes | Harbor project the issued accounts may act on |
 | `push` | no | Grant push in addition to pull, defaults to pull only |
+| `delete` | no | Grant delete, which image cleanup needs to remove manifests |
 | `ttl` | no | Lifetime of an issued account |
 | `max_ttl` | no | Longest an issued account may be renewed for |
 

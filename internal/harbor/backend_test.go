@@ -2,6 +2,7 @@ package harbor
 
 import (
 	"context"
+	"slices"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -526,5 +527,40 @@ func TestAStaticRoleCannotTakeARoleName(t *testing.T) {
 	}
 	if resp == nil || !resp.IsError() {
 		t.Fatalf("sharing a name with a role must be refused, got %v", resp)
+	}
+}
+
+func TestCleanupNeedsDeleteAndOnlyGetsItWhenTheRoleSaysSo(t *testing.T) {
+	fake := newFakeHarbor(t)
+	b, storage := configured(t, fake.server.URL)
+	writeRole(t, b, storage, "push-only", map[string]any{"project": "library", "push": true})
+	writeRole(t, b, storage, "cleaner", map[string]any{"project": "library", "push": true, "delete": true})
+
+	actions := func(role string) []string {
+		resp, err := b.HandleRequest(context.Background(), &logical.Request{
+			Operation: logical.ReadOperation,
+			Path:      "creds/" + role,
+			Storage:   storage,
+		})
+		if err != nil || resp == nil || resp.IsError() {
+			t.Fatalf("issuing %s failed: %v %v", role, err, resp)
+		}
+		var got []string
+		for _, a := range fake.created[len(fake.created)-1].Permissions[0].Access {
+			got = append(got, a.Action)
+		}
+		return got
+	}
+
+	if got := actions("push-only"); slices.Contains(got, "delete") {
+		t.Fatalf("a role that never asked for delete received it: %v", got)
+	}
+
+	got := actions("cleaner")
+	if !slices.Contains(got, "delete") {
+		t.Fatalf("cleanup cannot remove manifests without delete, got %v", got)
+	}
+	if !slices.Contains(got, "pull") || !slices.Contains(got, "push") {
+		t.Fatalf("delete must not replace the other actions, got %v", got)
 	}
 }

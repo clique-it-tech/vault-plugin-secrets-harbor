@@ -81,6 +81,9 @@ func (b *harborBackend) pathCredentialsRead(ctx context.Context, req *logical.Re
 	if role.Push {
 		access = append(access, robotAccess{Resource: "repository", Action: "push"})
 	}
+	if role.Delete {
+		access = append(access, robotAccess{Resource: "repository", Action: "delete"})
+	}
 
 	robotName := fmt.Sprintf("vault-%s-%d", name, time.Now().UnixNano())
 

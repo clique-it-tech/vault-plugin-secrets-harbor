@@ -15,6 +15,7 @@ const rolesStoragePrefix = "role/"
 type harborRole struct {
 	Project string        `json:"project"`
 	Push    bool          `json:"push"`
+	Delete  bool          `json:"delete"`
 	TTL     time.Duration `json:"ttl"`
 	MaxTTL  time.Duration `json:"max_ttl"`
 }
@@ -23,6 +24,7 @@ func (r *harborRole) toResponseData() map[string]any {
 	return map[string]any{
 		"project": r.Project,
 		"push":    r.Push,
+		"delete":  r.Delete,
 		"ttl":     int64(r.TTL.Seconds()),
 		"max_ttl": int64(r.MaxTTL.Seconds()),
 	}
@@ -57,6 +59,14 @@ func pathRoles(b *harborBackend) []*framework.Path {
 					Default:     false,
 					DisplayAttrs: &framework.DisplayAttributes{
 						Name: "Allow push",
+					},
+				},
+				"delete": {
+					Type:        framework.TypeBool,
+					Description: "Grant delete, which image cleanup needs to remove manifests.",
+					Default:     false,
+					DisplayAttrs: &framework.DisplayAttributes{
+						Name: "Allow delete",
 					},
 				},
 				"ttl": {
@@ -151,6 +161,9 @@ func (b *harborBackend) pathRolesWrite(ctx context.Context, req *logical.Request
 	}
 	if push, ok := data.GetOk("push"); ok {
 		role.Push = push.(bool)
+	}
+	if del, ok := data.GetOk("delete"); ok {
+		role.Delete = del.(bool)
 	}
 	if ttl, ok := data.GetOk("ttl"); ok {
 		role.TTL = time.Duration(ttl.(int)) * time.Second
