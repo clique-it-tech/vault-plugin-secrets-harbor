@@ -288,10 +288,20 @@ creates, after which Harbor stops honouring it.
 
 ## Releases
 
-A release carries the `linux/amd64` binary and its `SHA256SUMS`, because that is
-what a Vault server needs to fetch and verify. Versions and release notes come
-from the commit messages, and the build is attached in the same run, using only
-the token GitHub gives the workflow.
+A release carries the `linux/amd64` binary, its `SHA256SUMS`, and
+`SHA256SUMS.sig`, a cosign signature of the checksums made with the
+organisation's key in Stronghold. Check both before registering the plugin:
+
+```bash
+cosign public-key --key hashivault://cosign > cosign.pub
+cosign verify-blob --key cosign.pub --insecure-ignore-tlog \
+  --signature SHA256SUMS.sig SHA256SUMS
+sha256sum -c SHA256SUMS
+```
+
+Versions and release notes come from the commit messages. The build is attached
+by the release run on GitHub's runners, and the signature by a second
+job, the only one that can reach the signing key.
 
 ## Authorship
 
