@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   release:
-    runs-on: arc
+    runs-on: ubuntu-latest
     outputs:
       created: ${{ steps.rp.outputs.release_created }}
       tag: ${{ steps.rp.outputs.tag_name }}
@@ -27,7 +27,7 @@ jobs:
         if: steps.rp.outputs.release_created == 'true'
         with:
           go-version-file: go.mod
-          cache: false
+          cache: true
 
       - name: Build and attach the plugin
         if: steps.rp.outputs.release_created == 'true'

@@ -1,12 +1,13 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended", "helpers:pinGitHubActionDigests"],
-  "packageRules": [
-    {
-      "matchPackageNames": ["clique-it-tech/ci"],
-      "pinDigests": false
-    }
+  "extends": [
+    "config:recommended",
+    "helpers:pinGitHubActionDigests"
   ],
-  "schedule": ["before 6am on monday"],
-  "postUpdateOptions": ["gomodTidy"]
+  "schedule": [
+    "before 6am on monday"
+  ],
+  "postUpdateOptions": [
+    "gomodTidy"
+  ]
 }

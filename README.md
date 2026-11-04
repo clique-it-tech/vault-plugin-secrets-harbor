@@ -300,7 +300,7 @@ sha256sum -c SHA256SUMS
 ```
 
 Versions and release notes come from the commit messages. The build is attached
-by the release run on the organisation's runners, and the signature by a second
+by the release run on GitHub's runners, and the signature by a second
 job, the only one that can reach the signing key.
 
 ## Authorship
