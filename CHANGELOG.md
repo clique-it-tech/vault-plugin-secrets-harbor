@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.1](https://github.com/clique-it-tech/vault-plugin-secrets-harbor/compare/v1.4.0...v1.4.1) (2026-11-04)
+
+
+### Bug Fixes
+
+* bump vulnerable dependencies and scan with govulncheck ([#12](https://github.com/clique-it-tech/vault-plugin-secrets-harbor/issues/12)) ([6d952d7](https://github.com/clique-it-tech/vault-plugin-secrets-harbor/commit/6d952d760266771ef94bb4ff3f13f73a9ff0c166))
+
 ## [1.4.0](https://github.com/clique-it-tech/vault-plugin-secrets-harbor/compare/v1.3.0...v1.4.0) (2026-08-25)
 
 
