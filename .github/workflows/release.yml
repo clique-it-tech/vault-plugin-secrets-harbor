@@ -10,20 +10,24 @@ permissions:
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    runs-on: arc
+    outputs:
+      created: ${{ steps.rp.outputs.release_created }}
+      tag: ${{ steps.rp.outputs.tag_name }}
     steps:
-      - uses: googleapis/release-please-action@v5
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: rp
         with:
           release-type: go
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: steps.rp.outputs.release_created == 'true'
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         if: steps.rp.outputs.release_created == 'true'
         with:
           go-version-file: go.mod
+          cache: false
 
       - name: Build and attach the plugin
         if: steps.rp.outputs.release_created == 'true'
@@ -33,7 +37,42 @@ jobs:
             -o dist/vault-plugin-secrets-harbor-linux-amd64 ./cmd/vault-plugin-secrets-harbor
           cd dist
           sha256sum vault-plugin-secrets-harbor-linux-amd64 > SHA256SUMS
-          gh release upload "${{ steps.rp.outputs.tag_name }}" \
-            vault-plugin-secrets-harbor-linux-amd64 SHA256SUMS --clobber
+          gh release upload "$TAG" vault-plugin-secrets-harbor-linux-amd64 SHA256SUMS --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.rp.outputs.tag_name }}
+
+  sign:
+    needs: release
+    if: needs.release.outputs.created == 'true'
+    runs-on: arc-deploy
+    timeout-minutes: 10
+    container:
+      image: harbor.cliqueit.tech/clique/ci-tools:b3ccb40d51824bcb262d6ae970f240e9592e09d0@sha256:3f6e99d12a5ae64e2de5a2802ab85812bf7b5c90537ae65c75db9c2b3e228fa7
+    steps:
+      - uses: hashicorp/vault-action@892a26828f195e65540a40b4768ae4571f51ebfc # v4.0.0
+        with:
+          url: https://stronghold.k8s.cliqueit.tech
+          method: kubernetes
+          path: kubernetes_local
+          role: cosign
+          exportToken: "true"
+
+      - name: Sign the checksums
+        shell: bash
+        run: |
+          api="https://api.github.com/repos/$GITHUB_REPOSITORY"
+          auth=(-H "Authorization: Bearer $GH_TOKEN" -H "X-GitHub-Api-Version: 2022-11-28")
+          release=$(curl -fsSL "${auth[@]}" "$api/releases/tags/$TAG")
+          asset=$(jq -r '.assets[] | select(.name == "SHA256SUMS") | .url' <<< "$release")
+          curl -fsSL "${auth[@]}" -H "Accept: application/octet-stream" -o SHA256SUMS "$asset"
+          cosign sign-blob --key hashivault://cosign --tlog-upload=false --yes \
+            --output-signature SHA256SUMS.sig SHA256SUMS
+          curl -fsSL "${auth[@]}" -X POST -H "Content-Type: application/octet-stream" \
+            --data-binary @SHA256SUMS.sig \
+            "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$(jq -r .id <<< "$release")/assets?name=SHA256SUMS.sig" >/dev/null
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.release.outputs.tag }}
+          VAULT_ADDR: https://stronghold-active.d8-stronghold.svc:8200
+          VAULT_TLS_SERVER_NAME: stronghold.k8s.cliqueit.tech
